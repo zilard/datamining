@@ -37,19 +37,22 @@ def exec_cmd(cmd, check=False):
 
 
 COMP_LOG = "compute_collect_20210225_142133.log"
-COMP_CSV = "pgfault.csv"
+COMP_CSV = "freemem.csv"
 HANG_LOG = "hangtimestamps.log"
 
 STACK_LOG = "qemu_instance-000005be_25022021.log"
 
 VCPUS = 5
 F_LIST = ["kvm_irqfd+"]
+#F_LIST = []
 
 f_dict = {}
 
 
+
 KPROBE_PRETTYPRINT = True
-KPROBE_PRETTYOUTLOG = "comp23_pgfault_kprobe.log"
+KPROBE_PRETTYOUTLOG = "comp23_freemem_kprobe.log"
+
 
 
 KPROBE_LOGS = [
@@ -182,9 +185,7 @@ def hangtimestamps_crunch():
 
 
 
-
 DATE_CALC_CMD = "date -d'%s - %s seconds + %s seconds'"
-
 
 
 
@@ -194,9 +195,9 @@ def calc_timestamp(uptime_secs, dateformat=" +%m%d%H%M%S"):
 
 
 
+
+
 PRETTY_DATEFORMAT=" +\"%Y-%m-%d %H:%M:%S\""
-
-
 
 def kprobelog_crunch(kprobe_log, append=False):
 
@@ -219,7 +220,7 @@ def kprobelog_crunch(kprobe_log, append=False):
                 for f in F_LIST:
                 
                    if f in line:
-
+                        
                        prettyline = []
                        pline = parse(line.rstrip('\n'))
 
@@ -234,7 +235,7 @@ def kprobelog_crunch(kprobe_log, append=False):
                                prettyline.append(' '.join(pline[:2]))
                                prettyline += pline[5:]
                                pretty_list.append(prettyline)
-
+      
                            if f in f_dict:
 
                                if date in f_dict[f]:
@@ -279,9 +280,12 @@ def kprobelog_crunch(kprobe_log, append=False):
                                f_dict[f][date] = copy.deepcopy(cpu_bit_array)
                                cpu_bit_array = VCPUS * [0]
 
+                       #print(date)
+
 
             else:
                 break
+
 
 
     if KPROBE_PRETTYPRINT:
@@ -295,8 +299,6 @@ def kprobelog_crunch(kprobe_log, append=False):
         with open(KPROBE_PRETTYOUTLOG, write_operation) as prettylog:
             for prettyline in pretty_list:
                 prettylog.write("%s\n" % ' '.join(prettyline))
-
-
 
 
 
@@ -387,7 +389,8 @@ def stack_crunch():
 DATE_PATTERN = "____DATE"
 
 
-def fetchval(search_list, searchline_nr, searchcolons, f, compstat):
+
+def fetchval(search_list, searchline_nr, searchcolons, f, compstat, div=1):
 
     rec_started = False
     lineno = 0
@@ -407,37 +410,33 @@ def fetchval(search_list, searchline_nr, searchcolons, f, compstat):
             if rec_started:
                 lineno += 1
 
-
             if lineno == searchline_nr:
-            
+
                 parsed_line = parse(line.rstrip('\n'))
 
                 for i, searchcol in enumerate(searchcolons):
-          
-                    if DATE_PATTERN in search_list:      
+
+                    if DATE_PATTERN in search_list:
                         if i == (len(searchcolons) - 1):
                             fetchtxt += parsed_line[searchcol]
                         else:
                             fetchtxt += parsed_line[searchcol] + " "
                     else:
                         val = parsed_line[searchcol]
-                        fetch_list.append(int(val))
-                      
-
+                        if div > 1:
+                            val = "%.2f" % (float(val) / div)
+                        fetch_list.append(val)
 
                 if DATE_PATTERN in search_list:
                     compstat.append(fetchtxt.split('.')[0][4:])
                 else:
                     compstat += fetch_list
 
-
                 break
- 
 
         else:
             break
-    
-    
+
     return line
 
 
@@ -487,7 +486,6 @@ def log_crunch():
     for func in F_LIST:
         t_list = sort_time(f_dict[func])
         f_time_dict[func] = copy.deepcopy(t_list)
-    
 
 
     with open(COMP_LOG, 'r') as f:
@@ -495,14 +493,11 @@ def log_crunch():
         while True:
 
             line = fetchval([DATE_PATTERN], 2, [0], f, compstat)
-            line = fetchval(["pgfault"], 1, [1], f, compstat)
-            line = fetchval(["pgmajfault"], 1, [1], f, compstat)
+            line = fetchval(["Node 0 MemFree:"], 1, [3], f, compstat, 1024)
+            line = fetchval(["Node 1 MemFree:"], 1, [3], f, compstat, 1024)
 
             if len(compstat) == 3:
-                if prev_compstat:
-                    diff_compstat = calc_diff(compstat, prev_compstat)
-                    compstat_list.append(diff_compstat)
-                prev_compstat = compstat
+                compstat_list.append(compstat)
 
             compstat = []
 
@@ -525,7 +520,7 @@ def log_crunch():
         pre_time_func_dict = {}
         mid_time_func_dict = {}
         post_time_func_dict = {}
-
+          
         equal_time_found = False
         post_equal_time_found = False
 
@@ -687,10 +682,10 @@ def main():
         else:
             append = False
 
-        kprobelog_crunch(kprobe_log, append)    
+        kprobelog_crunch(kprobe_log, append)
+
 
     #stack_crunch()
-
     #F_LIST.append("hangtimestamps")
     #hangtimestamps_crunch() 
 

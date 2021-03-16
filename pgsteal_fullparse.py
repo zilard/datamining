@@ -48,6 +48,12 @@ F_LIST = ["kvm_irqfd+"]
 f_dict = {}
 
 
+
+KPROBE_PRETTYPRINT = True
+KPROBE_PRETTYOUTLOG = "comp23_pgsteal_kprobe.log"
+
+
+
 KPROBE_LOGS = [
 "irqfd_cleanup_m4kxhpsrtc23.pve.tacn.detemobil.de_2021-02-25_17_10_59.log",
 ]
@@ -183,16 +189,19 @@ DATE_CALC_CMD = "date -d'%s - %s seconds + %s seconds'"
 
 
 
-def calc_timestamp(uptime_secs):
+def calc_timestamp(uptime_secs, dateformat=" +%m%d%H%M%S"):
 
-    return exec_cmd(DATE_CALC_CMD % (KERNLOG_DATETIME, KERNLOG_UPTIMESECS, uptime_secs) + " +%m%d%H%M%S")
-
-
+    return exec_cmd(DATE_CALC_CMD % (KERNLOG_DATETIME, KERNLOG_UPTIMESECS, uptime_secs) + dateformat)
 
 
 
-def kprobelog_crunch(kprobe_log):
+PRETTY_DATEFORMAT=" +\"%Y-%m-%d %H:%M:%S\""
 
+
+
+def kprobelog_crunch(kprobe_log, append=False):
+
+    pretty_list = []
     result_list = []
  
     cpu = 0
@@ -212,6 +221,7 @@ def kprobelog_crunch(kprobe_log):
                 
                    if f in line:
 
+                       prettyline = []
                        pline = parse(line.rstrip('\n'))
 
                        if "CPU" in pline[0]:
@@ -219,6 +229,12 @@ def kprobelog_crunch(kprobe_log):
                            cpu = int(pline[1].split('/')[0])
                            uptime_secs = pline[4].rstrip(':') 
                            date = int(calc_timestamp(uptime_secs))
+
+                           if KPROBE_PRETTYPRINT:
+                               prettyline.append(calc_timestamp(uptime_secs, PRETTY_DATEFORMAT))
+                               prettyline.append(' '.join(pline[:2]))
+                               prettyline += pline[5:]
+                               pretty_list.append(prettyline)
 
                            if f in f_dict:
 
@@ -241,6 +257,12 @@ def kprobelog_crunch(kprobe_log):
                            uptime_secs = pline[3].rstrip(':')
                            date = int(calc_timestamp(uptime_secs))
 
+                           if KPROBE_PRETTYPRINT:
+                               prettyline.append(calc_timestamp(uptime_secs, PRETTY_DATEFORMAT))
+                               prettyline.append(pline[0])
+                               prettyline += pline[4:]
+                               pretty_list.append(prettyline)
+
                            cpu = -1
 
                            if f in f_dict:
@@ -261,6 +283,22 @@ def kprobelog_crunch(kprobe_log):
 
             else:
                 break
+
+
+    if KPROBE_PRETTYPRINT:
+        pretty_list.append(['=' * 60])
+
+
+    if KPROBE_PRETTYPRINT:
+        write_operation = 'w'
+        if append:
+            write_operation = 'a+'
+        with open(KPROBE_PRETTYOUTLOG, write_operation) as prettylog:
+            for prettyline in pretty_list:
+                prettylog.write("%s\n" % ' '.join(prettyline))
+
+
+
 
 
 
@@ -642,10 +680,17 @@ def log_crunch():
 
 def main():
 
-
+    append = False
     for kprobe_log in KPROBE_LOGS:
-        kprobelog_crunch(kprobe_log)
-    
+        idx = KPROBE_LOGS.index(kprobe_log)
+        if idx > 0:
+            append = True
+        else:
+            append = False
+
+        kprobelog_crunch(kprobe_log, append)
+
+
     #stack_crunch()
 
     #F_LIST.append("hangtimestamps")
